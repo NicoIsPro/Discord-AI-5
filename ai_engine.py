@@ -2,19 +2,23 @@ import aiohttp
 import asyncio
 import io
 import os
+import socket
 from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN_HF = os.environ.get("HF_TOKEN")
 HEADERS = {"Authorization": f"Bearer {TOKEN_HF}"} if TOKEN_HF else {}
 
+# URLs baseadas em IP (quando possível) ou mantendo a URL, mas com timeout agressivo
 TEXT_API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-2b-it"
-IMAGE_API_URL = "https://api-inference.huggingface.co/models/diffusers-internal-dev/nano-banana-modular"
 
 async def generate_reply(prompt, name):
+    # Usamos o conector com 'force_close=True' para evitar que o servidor 
+    # mantenha conexões "zumbis" que causam erro de DNS
+    connector = aiohttp.TCPConnector(ssl=False, force_close=True)
+    
     try:
-        # Usamos uma sessão padrão, sem o resolver customizado
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40)) as session:
+        async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=20)) as session:
             async with session.post(TEXT_API_URL, headers=HEADERS, json={"inputs": prompt}) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -24,14 +28,4 @@ async def generate_reply(prompt, name):
                 else:
                     return f"Erro na API: Status {resp.status}"
     except Exception as e:
-        return f"Erro: {type(e).__name__}"
-
-async def generate_image(prompt):
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
-            async with session.post(IMAGE_API_URL, headers=HEADERS, json={"inputs": prompt}) as resp:
-                if resp.status == 200:
-                    return io.BytesIO(await resp.read())
-                return f"Erro na imagem: Status {resp.status}"
-    except Exception as e:
-        return f"Erro de imagem: {type(e).__name__}"
+        return f"Erro de conexão (o bot perdeu o caminho): {type(e).__name__}"
