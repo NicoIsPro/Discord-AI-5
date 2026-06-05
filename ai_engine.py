@@ -35,7 +35,7 @@ Miguel: "sei n cara tbm tô vendo oq fazer dps kk"
 """
 
 async def generate_reply(prompt, name):
-    print(f"🤖 [IA] Enviando texto para a Groq: '{prompt}'")
+    print(f"🤖 [IA] Enviando texto para a Groq com Llama 3.3 70B: '{prompt}'")
     
     if not chave_api:
         return "❌ Erro: Chave GROQ_API_KEY não encontrada."
@@ -46,7 +46,8 @@ async def generate_reply(prompt, name):
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            model="llama-3.1-8b-instant"
+            # UPGRADE AQUI: Mudamos do modelo de 8B para o modelo avançado de 70B parameters
+            model="llama-3.3-70b-versatile"
         )
         
         resposta = completion.choices[0].message.content
