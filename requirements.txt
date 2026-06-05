@@ -3,4 +3,4 @@ fastapi
 uvicorn
 python-dotenv
 aiohttp
-aiodns  <-- ADICIONE ESTA LINHA
+aiodns 
