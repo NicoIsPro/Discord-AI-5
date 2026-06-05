@@ -1,16 +1,27 @@
 import os
-from groq import Groq
+from groq import AsyncGroq
 
-# Coloque sua chave no ambiente (na Render, adicione a variável GROQ_API_KEY)
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+chave_api = os.environ.get("GROQ_API_KEY")
+client = AsyncGroq(api_key=chave_api)
 
 async def generate_reply(prompt, name):
+    print(f"🤖 [IA] Enviando texto para a Groq: '{prompt}'")
+    
+    if not chave_api:
+        return "❌ Erro: Chave GROQ_API_KEY não encontrada nas variáveis da Render."
+
     try:
-        completion = client.chat.completions.create(
+        # REMOVIDO O TIMEOUT: Dá tempo para o servidor gratuito processar sem pressa
+        completion = await client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama3-8b-8192", # Modelo super rápido e inteligente
+            model="llama-3.1-8b-instant"
         )
-        return completion.choices[0].message.content
+        
+        resposta = completion.choices[0].message.content
+        print("✅ [IA] Resposta recebida da Groq com sucesso!")
+        return resposta
+
     except Exception as e:
-        print(f"Erro na Groq: {e}")
-        return "Tô dando umas falhadas na conexão, tenta dnv!"
+        # Se der erro, o bot vai te dizer na cara no Discord qual foi o erro técnico!
+        print(f"💥 ERRO INTERNO GROQ: {e}")
+        return f"Deu ruim aqui mano! Erro técnico: {str(e)}"
