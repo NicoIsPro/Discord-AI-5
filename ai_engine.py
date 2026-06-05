@@ -16,18 +16,27 @@ TEXT_API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-2b-
 IMAGE_API_URL = "https://api-inference.huggingface.co/models/diffusers-internal-dev/nano-banana-modular"
 
 async def generate_reply(prompt, name):
-    # Formatação ideal para o modelo Gemma entender que é uma conversa
-    gemma_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
-    
+    # Simplificamos o prompt para evitar que a API rejeite o formato
     try:
-        # Timeout de 30 segundos
+        # Timeout de 30 segundos para dar tempo de a IA processar
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            async with session.post(TEXT_API_URL, headers=HEADERS, json={"inputs": gemma_prompt}) as response:
+            async with session.post(TEXT_API_URL, headers=HEADERS, json={"inputs": prompt}) as response:
                 
                 if response.status == 200:
                     data = await response.json()
-                    # Limpa a resposta para a IA não ficar repetindo o que você falou
-                    texto_gerado = data[0].get('generated_text', '').replace(gemma_prompt, '').strip()
+                    
+                    # Trata se a API devolver uma lista (padrão) ou um dicionário puro (acontece no Gemma)
+                    if isinstance(data, list) and len(data) > 0:
+                        texto_gerado = data[0].get('generated_text', '').strip()
+                    elif isinstance(data, dict):
+                        texto_gerado = data.get('generated_text', '').strip()
+                    else:
+                        texto_gerado = str(data)
+
+                    # Remove o prompt do texto se a IA repetir ele na resposta
+                    if texto_gerado.startswith(prompt):
+                        texto_gerado = texto_gerado[len(prompt):].strip()
+
                     return texto_gerado if texto_gerado else "pode crer mano kkk"
                 
                 else:
@@ -35,17 +44,18 @@ async def generate_reply(prompt, name):
                     print(f"[ERRO GEMMA] Status: {response.status} - Resposta: {erro}")
                     
                     if response.status == 503:
-                        return "O cérebro da IA tava dormindo. Manda de novo em 20 segundos!"
+                        return "O Gemma tá iniciando o servidor deles lá. Tenta de novo em 20 segundos!"
                     if response.status == 401:
                         return "Opa, erro de autorização. O token (HF_TOKEN) não foi lido ou tá errado!"
                         
-                    return "Deu erro na IA de texto. Dá uma olhada no console."
+                    return f"Erro na API do Hugging Face: Status {response.status}"
 
     except asyncio.TimeoutError:
         return "Demorou muito pra responder. Tenta de novo, mano!"
     except Exception as e:
         print(f"[ERRO NO TEXTO] {e}")
-        return "A conexão com a IA caiu feio!"
+        # AGORA VAI MOSTRAR O ERRO REAL NA TELA DO DISCORD SE CAIR!
+        return f"A conexão com a IA caiu! Erro interno: {type(e).__name__} - {str(e)}"
 
 async def generate_image(prompt):
     try:
@@ -70,4 +80,4 @@ async def generate_image(prompt):
         return "O gerador de imagens demorou demais!"
     except Exception as e:
         print(f"[ERRO NA IMAGEM] {e}")
-        return "A conexão com o gerador de imagens caiu!"
+        return f"A conexão com o gerador de imagens caiu! Erro interno: {type(e).__name__} - {str(e)}"
