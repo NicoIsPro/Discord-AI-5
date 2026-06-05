@@ -1,14 +1,38 @@
 import os
 import discord
 from discord.ext import commands
-import ai_engine  # Puxa o seu arquivo de IA com as gírias atualizadas
+import ai_engine  # Puxa o seu arquivo de IA com as gírias
+import asyncio
+from fastapi import FastAPI
+import uvicorn
+from contextlib import asynccontextmanager
 
-# Configuração dos Intents (permissões obrigatórias do Discord)
+# Configuração dos Intents do Discord
 intents = discord.Intents.default()
-intents.message_content = True  # Permite que o bot leia o texto das mensagens
-
-# Inicializa o bot (o prefixo tanto faz porque ele responde por menção)
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# 1. ESTRATÉGIA ANTI-TIMEOUT: Abre a porta primeiro, liga o bot depois
+@asynccontextmanager
+async def lifespan(fastapi_app: FastAPI):
+    token = os.environ.get("DISCORD_TOKEN")
+    if token:
+        # Cria uma tarefa em background. Isso faz o bot ligar sem travar a porta da Render!
+        asyncio.create_task(bot.start(token))
+        print("🤖 [Sistema] Inicialização do Miguel agendada em segundo plano!")
+    else:
+        print("❌ Erro Crítico: A variável DISCORD_TOKEN não foi configurada.")
+    yield
+    # Fechamento seguro do bot caso o servidor pare
+    if not bot.is_closed():
+        await bot.close()
+
+# Inicializa o FastAPI passando o gerenciador de vida (lifespan)
+app = FastAPI(lifespan=lifespan)
+
+@app.api_route("/", methods=["GET", "HEAD"])
+def read_root():
+    return {"status": "Miguel ta vivo", "sistema": "Blindado"}
 
 @bot.event
 async def on_ready():
@@ -16,40 +40,28 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    # Regra 1: Ignora as mensagens do próprio bot para evitar loops infinitos
     if message.author == bot.user:
         return
 
-    # Regra 2: Só responde se o bot for marcado (@Miguel)
     if bot.user.mentioned_in(message):
         try:
-            # Captura o contexto e mostra o status "Digitando..." no Discord
             ctx = await bot.get_context(message)
             async with ctx.typing():
                 
-                # Remove a marcação do bot para enviar apenas a pergunta real para a Groq
                 prompt = message.content.replace(f'<@{bot.user.id}>', '').strip()
                 
-                # Proteção caso o usuário envie apenas a menção vazia ou só um "?"
                 if not prompt or prompt == "?":
                     prompt = "fala tu"
 
-                # Envia o texto para o ai_engine.py e espera a resposta da IA
                 resposta = await ai_engine.generate_reply(prompt, message.author.name)
-                
-                # Responde o usuário marcando ele de volta
                 await message.reply(resposta)
 
         except Exception as e:
-            # 🛡️ ARMADURA ANTI-CRASH: Se a Groq travar ou bloquear por spam,
-            # o erro é printado no console da Render, o bot avisa no chat,
-            # mas o script CONTINUA RODANDO sem cair!
             print(f"💥 [Erro Protegido] Falha ao processar mensagem: {e}")
             await message.reply("oxi cara? deu um erro interno aqui, tenta dnv dps kkk")
 
-# Puxa o token secreto do seu bot das configurações da Render
-token = os.environ.get("DISCORD_TOKEN")
-if token:
-    bot.run(token)
-else:
-    print("❌ Erro Crítico: A variável DISCORD_TOKEN não foi configurada na Render.")
+# 2. Inicialização Direta pelo Uvicorn
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    # O Uvicorn assume o controle, abre a porta e dispara o lifespan do bot
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
