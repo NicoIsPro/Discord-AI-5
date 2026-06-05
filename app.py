@@ -33,9 +33,11 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
+    # Ignora mensagens do próprio bot
     if message.author == bot.user:
         return
 
+    # Lógica da IA: Ativada por Menção ou DM
     if bot.user in message.mentions or isinstance(message.channel, discord.DMChannel):
         clean_content = message.content.replace(f'<@{bot.user.id}>', '').strip()
         if not clean_content:
@@ -43,7 +45,6 @@ async def on_message(message):
             
         prompt = memory.get_formatted_prompt(message.author.id, clean_content, message.author.display_name)
         
-        # O 'typing' mostra que o bot está processando, evitando o erro de "não respondendo"
         async with message.channel.typing():
             try:
                 reply = await ai_engine.generate_reply(prompt, message.author.display_name)
@@ -55,9 +56,12 @@ async def on_message(message):
                 print(f"[ERRO NO PROCESSAMENTO]: {e}")
                 await message.reply("foi mal mano, deu um estalo aqui na mente kkk")
 
+    # CORREÇÃO: Permite que o bot processe comandos normais (ex: !ajuda)
+    await bot.process_commands(message)
+
 # Estrutura assíncrona para rodar servidor Web e Bot em paralelo
 async def main():
-    config = uvicorn.Config(app, host="0.0.0.0", port=PORT)
+    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
     
     # Executa o servidor Web e o bot simultaneamente
@@ -71,4 +75,7 @@ if __name__ == "__main__":
         print("[ERRO CRÍTICO] DISCORD_TOKEN não configurado!")
     else:
         print("[SISTEMA] Iniciando Servidor e Bot...")
-        asyncio.run(main())
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            print("[SISTEMA] Aplicação encerrada manualmente.")
